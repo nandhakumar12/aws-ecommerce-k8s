@@ -1,0 +1,34 @@
+apiVersion: v2
+name: ecommerce
+description: A Helm chart for E-commerce Kubernetes Platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - ecommerce
+  - microservices
+  - kubernetes
+  - spring-boot
+  - react
+
+home: https://github.com/your-org/ecommerce-k8s-platform
+sources:
+  - https://github.com/your-org/ecommerce-k8s-platform
+
+maintainers:
+  - name: E-commerce Team
+    email: team@ecommerce.com
+
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+
+annotations:
+  category: E-commerce

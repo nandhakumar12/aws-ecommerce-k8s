@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: ecommerce
+  labels:
+    app: frontend
+    service: frontend
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: ecommerce-platform
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: frontend

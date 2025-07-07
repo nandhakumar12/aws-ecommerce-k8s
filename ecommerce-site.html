@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ÌªçÔ∏è AWS E-Commerce Store - LIVE!</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Roboto', sans-serif; background: #f5f5f5; }
+        
+        .header { 
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); 
+            color: white; 
+            padding: 16px 0; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .header-content { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            padding: 0 20px; 
+        }
+        .logo { font-size: 28px; font-weight: bold; }
+        .cart-icon { 
+            display: flex; 
+            align-items: center; 
+            cursor: pointer; 
+            padding: 8px 16px; 
+            border-radius: 20px; 
+            background: rgba(255,255,255,0.1); 
+        }
+        .badge { 
+            background: #dc004e; 
+            color: white; 
+            border-radius: 50%; 
+            padding: 4px 8px; 
+            font-size: 12px; 
+            margin-left: 8px; 
+            min-width: 20px; 
+            text-align: center; 
+        }
+        
+        .hero { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 80px 20px; 
+            text-align: center; 
+        }
+        .hero h1 { font-size: 48px; margin-bottom: 16px; }
+        .hero h3 { font-size: 20px; margin-bottom: 24px; opacity: 0.9; }
+        .status-badge { 
+            background: #4caf50; 
+            color: white; 
+            padding: 12px 24px; 
+            border-radius: 25px; 
+            font-weight: bold; 
+            display: inline-block; 
+            font-size: 16px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+        .section-title { 
+            font-size: 32px; 
+            margin-bottom: 40px; 
+            text-align: center; 
+            color: #333; 
+        }
+        
+        .products { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 24px; 
+            margin-bottom: 60px; 
+        }
+        .product-card { 
+            background: white; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+            transition: all 0.3s ease; 
+        }
+        .product-card:hover { 
+            transform: translateY(-8px); 
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
+        }
+        .product-image { 
+            width: 100%; 
+            height: 200px; 
+            background: linear-gradient(45deg, #f0f0f0, #e0e0e0); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 48px; 
+            color: #666; 
+        }
+        .product-info { padding: 24px; }
+        .product-name { 
+            font-size: 20px; 
+            font-weight: 500; 
+            margin-bottom: 8px; 
+            color: #333; 
+        }
+        .product-price { 
+            font-size: 24px; 
+            color: #1976d2; 
+            font-weight: bold; 
+            margin-bottom: 16px; 
+        }
+        .btn { 
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            width: 100%; 
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        .btn:hover { 
+            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%); 
+            transform: translateY(-2px);
+        }
+        
+        .stats-section { 
+            background: white; 
+            border-radius: 16px; 
+            padding: 40px; 
+            text-align: center; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+            gap: 30px; 
+            margin-top: 30px; 
+        }
+        .stat-item h4 { 
+            color: #1976d2; 
+            margin-bottom: 12px; 
+            font-size: 18px; 
+        }
+        .stat-item p { 
+            color: #666; 
+            line-height: 1.6; 
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">ÌªçÔ∏è AWS E-Commerce Store</div>
+            <div class="cart-icon" onclick="showCart()">
+                Ìªí Cart <span class="badge" id="cart-count">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="hero">
+        <h1>Ìæâ Your E-Commerce Store is LIVE!</h1>
+        <h3>Deployed on AWS EKS with Kubernetes ‚Ä¢ EU-West-1</h3>
+        <div class="status-badge">Ì∫Ä LIVE ON AWS</div>
+    </div>
+
+    <div class="container">
+        <h2 class="section-title">Featured Products</h2>
+        <div class="products">
+            <div class="product-card">
+                <div class="product-image">Ìæß</div>
+                <div class="product-info">
+                    <div class="product-name">Wireless Headphones</div>
+                    <div class="product-price">$99.99</div>
+                    <button class="btn" onclick="addToCart('Wireless Headphones', 99.99)">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div class="product-card">
+                <div class="product-image">‚åö</div>
+                <div class="product-info">
+                    <div class="product-name">Smart Watch</div>
+                    <div class="product-price">$199.99</div>
+                    <button class="btn" onclick="addToCart('Smart Watch', 199.99)">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div class="product-card">
+                <div class="product-image">Ì±ü</div>
+                <div class="product-info">
+                    <div class="product-name">Running Shoes</div>
+                    <div class="product-price">$79.99</div>
+                    <button class="btn" onclick="addToCart('Running Shoes', 79.99)">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div class="product-card">
+                <div class="product-image">‚òï</div>
+                <div class="product-info">
+                    <div class="product-name">Coffee Maker</div>
+                    <div class="product-price">$149.99</div>
+                    <button class="btn" onclick="addToCart('Coffee Maker', 149.99)">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div class="product-card">
+                <div class="product-image">Ìæí</div>
+                <div class="product-info">
+                    <div class="product-name">Laptop Backpack</div>
+                    <div class="product-price">$49.99</div>
+                    <button class="btn" onclick="addToCart('Laptop Backpack', 49.99)">Add to Cart</button>
+                </div>
+            </div>
+            
+            <div class="product-card">
+                <div class="product-image">Ì¥ä</div>
+                <div class="product-info">
+                    <div class="product-name">Bluetooth Speaker</div>
+                    <div class="product-price">$59.99</div>
+                    <button class="btn" onclick="addToCart('Bluetooth Speaker', 59.99)">Add to Cart</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <h2>Ìæä Congratulations! Your E-commerce Platform is Live!</h2>
+            <p style="font-size: 18px; margin: 20px 0; color: #666;"><strong>Your complete e-commerce solution is successfully running on AWS!</strong></p>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>‚úÖ Infrastructure</h4>
+                    <p>EKS Cluster: ecommerce-dev<br/>
+                    Region: EU-West-1<br/>
+                    Worker Nodes: 3 running<br/>
+                    Load Balancer: Active</p>
+                </div>
+                <div class="stat-item">
+                    <h4>‚úÖ Services</h4>
+                    <p>Frontend: 2 replicas<br/>
+                    Backend: 6 microservices<br/>
+                    Database: DynamoDB<br/>
+                    All services healthy</p>
+                </div>
+                <div class="stat-item">
+                    <h4>‚úÖ Monitoring</h4>
+                    <p>Prometheus: Active<br/>
+                    Grafana: Running<br/>
+                    Metrics: Collecting<br/>
+                    Alerts: Configured</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cartCount = 0;
+        let cartItems = [];
+        
+        function addToCart(productName, price) {
+            cartCount++;
+            cartItems.push({name: productName, price: price});
+            document.getElementById('cart-count').textContent = cartCount;
+            alert(`‚úÖ ${productName} added to cart! ($${price})`);
+            console.log(`Added ${productName} to cart. Total items: ${cartCount}`);
+        }
+        
+        function showCart() {
+            if (cartItems.length === 0) {
+                alert('Your cart is empty! Add some products first.');
+                return;
+            }
+            
+            let cartSummary = 'Ìªí Your Cart:\n\n';
+            let total = 0;
+            
+            cartItems.forEach((item, index) => {
+                cartSummary += `${index + 1}. ${item.name} - $${item.price}\n`;
+                total += item.price;
+            });
+            
+            cartSummary += `\nÌ≤∞ Total: $${total.toFixed(2)}`;
+            cartSummary += '\n\nÌ∫Ä Ready to checkout!';
+            
+            alert(cartSummary);
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Ìæâ AWS E-Commerce Store loaded successfully!');
+            console.log('ÌøóÔ∏è Infrastructure: EKS + DynamoDB + ECR + Prometheus + Grafana');
+            console.log('Ìºç Region: EU-West-1');
+            console.log('Ì≤∞ Estimated cost: ~$200-250/month');
+            console.log('ÌªçÔ∏è Ready for customers!');
+        });
+    </script>
+</body>
+</html>

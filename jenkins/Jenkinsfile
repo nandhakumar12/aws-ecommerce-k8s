@@ -1,0 +1,285 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        SONAR_PROJECT_KEY = 'ecommerce-k8s-platform'
+    }
+    
+    parameters {
+        choice(
+            name: 'SERVICE',
+            choices: ['frontend', 'users', 'products', 'orders', 'payment', 'delivery', 'warehouse'],
+            description: 'Select service to build and deploy'
+        )
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'staging', 'prod'],
+            description: 'Target environment'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip running tests'
+        )
+        booleanParam(
+            name: 'DEPLOY_TO_K8S',
+            defaultValue: true,
+            description: 'Deploy to Kubernetes after build'
+        )
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
+                    env.IMAGE_TAG = "${BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                script {
+                    if (params.SERVICE == 'frontend') {
+                        env.SERVICE_PATH = 'frontend'
+                        env.DOCKERFILE_PATH = 'frontend/Dockerfile'
+                        env.ECR_REPOSITORY = 'ecommerce-frontend'
+                    } else {
+                        env.SERVICE_PATH = "services/${params.SERVICE}"
+                        env.DOCKERFILE_PATH = "services/${params.SERVICE}/Dockerfile"
+                        env.ECR_REPOSITORY = "ecommerce-${params.SERVICE}"
+                    }
+                }
+            }
+        }
+        
+        stage('Build and Test') {
+            parallel {
+                stage('Frontend Build') {
+                    when {
+                        expression { params.SERVICE == 'frontend' }
+                    }
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npm run lint'
+                            script {
+                                if (!params.SKIP_TESTS) {
+                                    sh 'npm test -- --coverage --watchAll=false'
+                                }
+                            }
+                            sh 'npm run build'
+                        }
+                    }
+                    post {
+                        always {
+                            publishHTML([
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'frontend/coverage/lcov-report',
+                                reportFiles: 'index.html',
+                                reportName: 'Frontend Coverage Report'
+                            ])
+                        }
+                    }
+                }
+                
+                stage('Backend Build') {
+                    when {
+                        expression { params.SERVICE != 'frontend' }
+                    }
+                    steps {
+                        dir("services/${params.SERVICE}") {
+                            sh 'mvn clean compile'
+                            script {
+                                if (!params.SKIP_TESTS) {
+                                    sh 'mvn test'
+                                }
+                            }
+                            sh 'mvn package -DskipTests'
+                        }
+                    }
+                    post {
+                        always {
+                            script {
+                                if (!params.SKIP_TESTS) {
+                                    publishTestResults testResultsPattern: "services/${params.SERVICE}/target/surefire-reports/*.xml"
+                                    publishCoverage adapters: [
+                                        jacocoAdapter('services/' + params.SERVICE + '/target/site/jacoco/jacoco.xml')
+                                    ], sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('SonarQube Analysis') {
+            when {
+                not { params.SKIP_TESTS }
+            }
+            steps {
+                script {
+                    def scannerHome = tool 'SonarQubeScanner'
+                    withSonarQubeEnv('SonarQube') {
+                        if (params.SERVICE == 'frontend') {
+                            dir('frontend') {
+                                sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY}-frontend"
+                            }
+                        } else {
+                            dir("services/${params.SERVICE}") {
+                                sh 'mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}-${SERVICE}'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            when {
+                not { params.SKIP_TESTS }
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def image = docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}", "-f ${DOCKERFILE_PATH} .")
+                    env.DOCKER_IMAGE = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                }
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                script {
+                    sh """
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\
+                        -v \$(pwd):/tmp/.cache/ aquasec/trivy:latest image \\
+                        --exit-code 0 --severity HIGH,CRITICAL \\
+                        --format template --template "@contrib/sarif.tpl" \\
+                        -o /tmp/.cache/trivy-results.sarif \\
+                        ${ECR_REPOSITORY}:${IMAGE_TAG}
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-results.sarif', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \\
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${DOCKER_IMAGE}
+                        docker push ${DOCKER_IMAGE}
+                        
+                        # Also tag as latest for the environment
+                        docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${params.ENVIRONMENT}-latest
+                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${params.ENVIRONMENT}-latest
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            when {
+                expression { params.DEPLOY_TO_K8S }
+            }
+            steps {
+                script {
+                    sh """
+                        # Update image tag in ArgoCD application
+                        argocd app set ecommerce-${params.SERVICE} \\
+                        --parameter image.tag=${IMAGE_TAG} \\
+                        --parameter image.repository=${ECR_REGISTRY}/${ECR_REPOSITORY}
+                        
+                        # Sync the application
+                        argocd app sync ecommerce-${params.SERVICE} --prune
+                        
+                        # Wait for deployment
+                        argocd app wait ecommerce-${params.SERVICE} --timeout 300
+                    """
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            when {
+                allOf {
+                    expression { params.DEPLOY_TO_K8S }
+                    expression { params.ENVIRONMENT == 'dev' }
+                    not { params.SKIP_TESTS }
+                }
+            }
+            steps {
+                script {
+                    sh """
+                        # Run integration tests against deployed service
+                        kubectl port-forward svc/${params.SERVICE} 8080:8080 -n ecommerce-${params.ENVIRONMENT} &
+                        sleep 10
+                        
+                        # Run API tests
+                        newman run tests/integration/${params.SERVICE}-api-tests.json \\
+                        --environment tests/environments/${params.ENVIRONMENT}.json \\
+                        --reporters cli,junit --reporter-junit-export newman-results.xml
+                        
+                        # Kill port-forward
+                        pkill -f "kubectl port-forward"
+                    """
+                }
+            }
+            post {
+                always {
+                    publishTestResults testResultsPattern: 'newman-results.xml'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            script {
+                if (params.ENVIRONMENT == 'prod') {
+                    slackSend(
+                        channel: '#deployments',
+                        color: 'good',
+                        message: ":white_check_mark: Successfully deployed ${params.SERVICE} to ${params.ENVIRONMENT} - Build #${BUILD_NUMBER}"
+                    )
+                }
+            }
+        }
+        failure {
+            slackSend(
+                channel: '#deployments',
+                color: 'danger',
+                message: ":x: Failed to deploy ${params.SERVICE} to ${params.ENVIRONMENT} - Build #${BUILD_NUMBER}"
+            )
+        }
+    }
+}
