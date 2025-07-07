@@ -1,0 +1,113 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_DEFAULT_REGION = 'eu-west-1'
+        ECR_REGISTRY = '123456789012.dkr.ecr.eu-west-1.amazonaws.com'
+        EKS_CLUSTER_NAME = 'ecommerce-dev'
+        NAMESPACE = 'ecommerce'
+        AWS_CREDENTIALS = credentials('aws-credentials')
+    }
+    
+    parameters {
+        choice(
+            name: 'SERVICE',
+            choices: ['frontend', 'user-service', 'product-service', 'order-service'],
+            description: 'Select service to build and deploy'
+        )
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'staging', 'prod'],
+            description: 'Target environment'
+        )
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "Building commit: ${env.GIT_COMMIT}"
+            }
+        }
+        
+        stage('Setup AWS CLI') {
+            steps {
+                sh '''
+                    aws configure set aws_access_key_id $AWS_CREDENTIALS_USR
+                    aws configure set aws_secret_access_key $AWS_CREDENTIALS_PSW
+                    aws configure set default.region $AWS_DEFAULT_REGION
+                    aws sts get-caller-identity
+                '''
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                script {
+                    if (params.SERVICE == 'frontend') {
+                        dir('frontend') {
+                            sh 'npm install && npm run build'
+                        }
+                    } else {
+                        dir("services/${params.SERVICE}") {
+                            sh 'npm install'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('ECR Login & Build Image') {
+            steps {
+                sh '''
+                    aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                '''
+                script {
+                    def servicePath = params.SERVICE == 'frontend' ? 'frontend' : "services/${params.SERVICE}"
+                    def imageName = params.SERVICE == 'frontend' ? 'ecommerce-frontend' : params.SERVICE
+                    
+                    dir(servicePath) {
+                        sh """
+                            docker build -t ${imageName}:${BUILD_NUMBER} .
+                            docker tag ${imageName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${imageName}:${BUILD_NUMBER}
+                            docker tag ${imageName}:${BUILD_NUMBER} ${ECR_REGISTRY}/${imageName}:latest
+                            docker push ${ECR_REGISTRY}/${imageName}:${BUILD_NUMBER}
+                            docker push ${ECR_REGISTRY}/${imageName}:latest
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to EKS') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    script {
+                        def imageName = params.SERVICE == 'frontend' ? 'ecommerce-frontend' : params.SERVICE
+                        def deploymentName = params.SERVICE == 'frontend' ? 'frontend' : params.SERVICE
+                        
+                        sh """
+                            aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $EKS_CLUSTER_NAME
+                            kubectl set image deployment/${deploymentName} ${deploymentName}=${ECR_REGISTRY}/${imageName}:${BUILD_NUMBER} -n ${NAMESPACE}
+                            kubectl rollout status deployment/${deploymentName} -n ${NAMESPACE} --timeout=300s
+                            kubectl get pods -n ${NAMESPACE}
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'docker system prune -f || true'
+            cleanWs()
+        }
+        success {
+            echo "Ìæâ Deployment successful!"
+        }
+        failure {
+            echo "‚ùå Deployment failed!"
+        }
+    }
+}
